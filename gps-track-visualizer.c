@@ -10,6 +10,11 @@ enum { IMG_HEIGHT = 12800 };
 enum { IMG_BORDER = 20 };
 enum { MAX_POINTS = 1000000 };
 
+struct point
+{
+	unsigned x, y;
+	bool is_end;
+};
 
 static int count;
 static int last_count;
@@ -18,10 +23,7 @@ static double total_length;
 static double lon[MAX_POINTS];
 static double lat[MAX_POINTS];
 
-static int x[MAX_POINTS];
-static int y[MAX_POINTS];
-
-static bool ends[MAX_POINTS];
+static struct point points[MAX_POINTS];
 
 
 static void get_point_coordinates(xmlNodePtr trkpt)
@@ -38,7 +40,7 @@ static void get_point_coordinates(xmlNodePtr trkpt)
 
 static int read_gpx(const char *gpx_filename)
 {
-	printf("Processing %s\n", gpx_filename);
+	printf("Processing %s", gpx_filename);
 
 	xmlDocPtr doc;
 	if (!(doc = xmlParseFile(gpx_filename)))
@@ -70,7 +72,7 @@ static int read_gpx(const char *gpx_filename)
 			trkseg = trk->xmlChildrenNode;
 			while (trkseg != NULL)
 			{
-				ends[count] = true;
+				points[count].is_end = true;
 				if (!xmlStrcmp(trkseg->name, (const xmlChar *) "trkseg"))
 				{
 					trkpt = trkseg->xmlChildrenNode;
@@ -85,7 +87,7 @@ static int read_gpx(const char *gpx_filename)
 						trkpt = trkpt->next;
 					}
 				}
-				ends[count - 1] = true;
+				points[count - 1].is_end = true;
 				trkseg = trkseg->next;
 			}
 		}
@@ -113,6 +115,9 @@ static int lonlat_to_xy()
 
 	pj_transform(pj_src, pj_dst, count, 1, lon, lat, NULL);
 
+	pj_free(pj_src);
+	pj_free(pj_dst);
+
 	double min_lon = lon[0];
 	double max_lon = lon[0];
 	double min_lat = lat[0];
@@ -133,12 +138,9 @@ static int lonlat_to_xy()
 
 	for (int i = 0; i < count; i++)
 	{
-		x[i] = IMG_BORDER + k * (lon[i] - min_lon) + 0.5;
-		y[i] = IMG_BORDER + k * (lat[i] - min_lat) + 0.5;
+		points[i].x = IMG_BORDER + k * (lon[i] - min_lon) + 0.5;
+		points[i].y = IMG_BORDER + k * (lat[i] - min_lat) + 0.5;
 	}
-
-	pj_free(pj_src);
-	pj_free(pj_dst);
 
 	return 0;
 }
@@ -147,26 +149,27 @@ static int draw_img(const char *img_file_name)
 {
 	gdImagePtr img = gdImageCreate(IMG_WIDTH, IMG_HEIGHT);
 
+	const int dot_r = 3;
 	int black = gdImageColorAllocate(img, 0,   0, 0); // Set background color
 	int green = gdImageColorAllocate(img, 0, 255, 0);
 	int red   = gdImageColorAllocate(img, 255, 0, 0);
 
-	int x2 = x[0];
-	int y2 = y[0];
+	struct point p2 = points[0];
 	for (int i = 1; i < count; i++)
 	{
-		int x1 = x2;
-		int y1 = y2;
-		x2 = x[i];
-		y2 = y[i];
+		struct point p1 = p2;
+		p2 = points[i];
 
-		if (!ends[i - 1] || !ends[i])
-			gdImageLine(img, x1, IMG_HEIGHT - y1, x2, IMG_HEIGHT - y2, green);
+		if (!p1.is_end || !p2.is_end)
+			gdImageLine(img, p1.x, IMG_HEIGHT - p1.y, p2.x, IMG_HEIGHT - p2.y, green);
 	}
 
 	for (int i = 0; i < count; i++)
-		if (ends[i])
-			gdImageFilledEllipse(img, x[i], IMG_HEIGHT - y[i], 3, 3, red);
+	{
+		struct point p = points[i];
+		if (p.is_end)
+			gdImageFilledEllipse(img, p.x, IMG_HEIGHT - p.y, dot_r, dot_r, red);
+	}
 
 	FILE *pngout = fopen(img_file_name, "wb");
 	if (!pngout)
@@ -210,7 +213,7 @@ static double calc_length(int p1, int p2)
 		lon2 = lon[i];
 		lat2 = lat[i];
 
-		if (!ends[i - 1] || !ends[i])
+		if (!points[i - 1].is_end || !points[i].is_end)
 			len += distance(lon1, lat1, lon2, lat2);
 	}
 
