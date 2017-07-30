@@ -1,5 +1,7 @@
 #include <stdbool.h>
 #include <string.h>
+#include <dirent.h>
+#include <sys/stat.h>
 #include <libxml/xmlreader.h>
 #include <proj_api.h>
 #include <gd.h>
@@ -36,6 +38,41 @@ static void get_point_coordinates(xmlNodePtr trkpt)
 
 	xmlFree(xml_lon);
 	xmlFree(xml_lat);
+}
+
+static double distance(double lon1, double lat1, double lon2, double lat2)
+{
+	const int R = 6367500;
+
+	lon1 *= M_PI / 180.0;
+	lat1 *= M_PI / 180.0;
+	lon2 *= M_PI / 180.0;
+	lat2 *= M_PI / 180.0;
+
+	double x = (lon2 - lon1) * cos((lat1 + lat2) / 2);
+	double y = (lat2 - lat1);
+
+	return sqrt(x * x + y * y) * R;
+}
+
+static double calc_length(int p1, int p2)
+{
+	double len = 0.0;
+
+	double lon2 = lon[p1];
+	double lat2 = lat[p1];
+	for (int i = p1 + 1; i <= p2; i++)
+	{
+		double lon1 = lon2;
+		double lat1 = lat2;
+		lon2 = lon[i];
+		lat2 = lat[i];
+
+		if (!points[i - 1].is_end || !points[i].is_end)
+			len += distance(lon1, lat1, lon2, lat2);
+	}
+
+	return len;
 }
 
 static int read_gpx(const char *gpx_filename)
@@ -95,6 +132,12 @@ static int read_gpx(const char *gpx_filename)
 	}
 
 	xmlFreeDoc(doc);
+
+	double length = calc_length(last_count, count - 1);
+	last_count = count;
+	total_length += length;
+	printf(" [%.2f km]\n", length / 1000);
+
 	return 0;
 }
 
@@ -185,39 +228,29 @@ static int draw_img(const char *img_file_name)
 	return 0;
 }
 
-static double distance(double lon1, double lat1, double lon2, double lat2)
+static int read_dir(const char *dir_name)
 {
-	const int R = 6367500;
+	DIR *dir = opendir(dir_name);
+	if (!dir)
+		return 1;
 
-	lon1 *= M_PI / 180.0;
-	lat1 *= M_PI / 180.0;
-	lon2 *= M_PI / 180.0;
-	lat2 *= M_PI / 180.0;
+	struct dirent *ent;
+	while ((ent = readdir(dir)))
+		if (ent->d_name[0] != '.')
+		{
+			char track[256];
+			strncpy(track, dir_name, sizeof(track) - 1);
+			strncat(track, ent->d_name, sizeof(track) - strlen(track) - 1);
 
-	double x = (lon2 - lon1) * cos((lat1 + lat2) / 2);
-	double y = (lat2 - lat1);
+			if (read_gpx(track) != 0)
+			{
+				closedir(dir);
+				return 2;
+			}
+		}
 
-	return sqrt(x * x + y * y) * R;
-}
-
-static double calc_length(int p1, int p2)
-{
-	double len = 0.0;
-
-	double lon2 = lon[p1];
-	double lat2 = lat[p1];
-	for (int i = p1 + 1; i <= p2; i++)
-	{
-		double lon1 = lon2;
-		double lat1 = lat2;
-		lon2 = lon[i];
-		lat2 = lat[i];
-
-		if (!points[i - 1].is_end || !points[i].is_end)
-			len += distance(lon1, lat1, lon2, lat2);
-	}
-
-	return len;
+	closedir(dir);
+	return 0;
 }
 
 int main(int argc, char *argv[])
@@ -245,27 +278,33 @@ int main(int argc, char *argv[])
 		if (newline)
 			*newline = '\0';
 
-		if (read_gpx(track))
+		struct stat st;
+		if (stat(track, &st) == 0 && S_ISDIR(st.st_mode))
 		{
-			fclose(file);
-			return 3;
+			if (read_dir(track) != 0)
+			{
+				fclose(file);
+				return 3;
+			}
 		}
-
-		double length = calc_length(last_count, count - 1);
-		last_count = count;
-		total_length += length;
-
-		printf(" [%.2f km]\n", length / 1000);
+		else
+		{
+			if (read_gpx(track) != 0)
+			{
+				fclose(file);
+				return 4;
+			}
+		}
 	}
 	fclose(file);
 
 	printf("Total: %.2f km\n", total_length / 1000);
 
 	if (lonlat_to_xy())
-		return 4;
+		return 5;
 
 	if (draw_img(out_img))
-		return 5;
+		return 6;
 
 	return 0;
 }
