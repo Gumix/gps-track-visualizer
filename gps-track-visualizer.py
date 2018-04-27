@@ -7,10 +7,6 @@ import xml.etree.ElementTree as ET
 from pyproj import Proj, transform
 from PIL import Image, ImageDraw
 
-IMG_WIDTH  = 12800
-IMG_HEIGHT = 12800
-IMG_BORDER = 20
-
 points = [ ]
 total_length = 0
 
@@ -73,7 +69,9 @@ def read_dir(dir_name):
                 read_gpx(f)
 
 
-def lonlat_to_xy():
+def lonlat_to_xy(img_width, img_height, img_border):
+    print("Converting coordinates...")
+
     pj_src = Proj(ellps='WGS84', proj='latlong', datum='WGS84')
     pj_dst = Proj(ellps='WGS84', proj='utm', lon_0='39')    # Moscow
 
@@ -84,20 +82,20 @@ def lonlat_to_xy():
     max_x = max(p['x'] for p in points)
     min_y = min(p['y'] for p in points)
     max_y = max(p['y'] for p in points)
-    k_x = (IMG_WIDTH  - 2 * IMG_BORDER) / (max_x - min_x)
-    k_y = (IMG_HEIGHT - 2 * IMG_BORDER) / (max_y - min_y)
+    k_x = (img_width  - 2 * img_border) / (max_x - min_x)
+    k_y = (img_height - 2 * img_border) / (max_y - min_y)
     k = min(k_x, k_y)
 
     for p in points:
-        p['x'] = round(IMG_BORDER + k * (p['x'] - min_x))
-        p['y'] = IMG_HEIGHT - round(IMG_BORDER + k * (p['y'] - min_y))
+        p['x'] = round(img_border + k * (p['x'] - min_x))
+        p['y'] = img_height - round(img_border + k * (p['y'] - min_y))
 
 
-def draw_img(img_file_name):
+def draw_img(img_file_name, img_width, img_height):
     print("Creating image...")
 
     palette = [ 0,0,0, 0,255,0, 255,0,0 ]
-    img = Image.new(mode='P', size=(IMG_WIDTH, IMG_HEIGHT))
+    img = Image.new(mode='P', size=(img_width, img_height))
     img.putpalette(palette)
     draw = ImageDraw.Draw(img)
 
@@ -119,8 +117,11 @@ def draw_img(img_file_name):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('track_list', help="List of GPX tracks or directories with tracks")
-    parser.add_argument('out_image', help="Output PNG image")
+    parser.add_argument('track_list', help="list of GPX tracks or directories with tracks")
+    parser.add_argument('out_image',  help="output PNG image")
+    parser.add_argument('--width',  type=int, default=12800, help="width of the output image")
+    parser.add_argument('--height', type=int, default=12800, help="height of the output image")
+    parser.add_argument('--border', type=int, default=20,    help="border on the output image")
     args = parser.parse_args()
 
     try:
@@ -138,9 +139,9 @@ def main():
 
     print("Total: %.2f km\n" % (total_length / 1000))
 
-    lonlat_to_xy()
+    lonlat_to_xy(args.width, args.height, args.border)
 
-    draw_img(args.out_image)
+    draw_img(args.out_image, args.width, args.height)
 
 
 if __name__ == '__main__':
