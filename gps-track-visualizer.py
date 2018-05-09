@@ -62,7 +62,7 @@ def read_gpx(gpx_filename):
 
 
 def read_dir(dir_name):
-    for f in os.listdir(dir_name):
+    for f in sorted(os.listdir(dir_name)):
         if not f.startswith('.'):
             f = os.path.join(dir_name, f)
             if os.path.isfile(f):
