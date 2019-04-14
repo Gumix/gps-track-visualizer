@@ -72,8 +72,14 @@ def read_dir(dir_name):
 def lonlat_to_xy(img_width, img_height, img_border):
     print("Converting coordinates...")
 
+    # Calculate average longitude
+    lon_sum = 0.0
+    for p in points:
+        lon_sum += float(p['lon'])
+    lon_avg = lon_sum / len(points)
+
     pj_src = Proj(ellps='WGS84', proj='latlong', datum='WGS84')
-    pj_dst = Proj(ellps='WGS84', proj='utm', lon_0='39')    # Moscow
+    pj_dst = Proj(ellps='WGS84', proj='utm', lon_0=lon_avg)
 
     for p in points:
         p['x'], p['y'] = transform(pj_src, pj_dst, p['lon'], p['lat'])
