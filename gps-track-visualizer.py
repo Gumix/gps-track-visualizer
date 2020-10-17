@@ -4,7 +4,7 @@ import os
 import math
 import argparse
 import xml.etree.ElementTree as ET
-from pyproj import Proj, transform
+from pyproj import Transformer
 from PIL import Image, ImageDraw
 
 points = [ ]
@@ -78,11 +78,13 @@ def lonlat_to_xy(img_width, img_height, img_border):
         lon_sum += float(p['lon'])
     lon_avg = lon_sum / len(points)
 
-    pj_src = Proj(ellps='WGS84', proj='latlong', datum='WGS84')
-    pj_dst = Proj(ellps='WGS84', proj='utm', lon_0=lon_avg)
+    transformer = Transformer.from_crs(
+        {"proj":'latlong', "ellps":'WGS84', "datum":'WGS84'},
+        {"proj":'utm', "ellps":'WGS84', "lon_0":lon_avg},
+        always_xy=True)
 
     for p in points:
-        p['x'], p['y'] = transform(pj_src, pj_dst, p['lon'], p['lat'])
+        p['x'], p['y'] = transformer.transform(p['lon'], p['lat'])
 
     min_x = min(p['x'] for p in points)
     max_x = max(p['x'] for p in points)
