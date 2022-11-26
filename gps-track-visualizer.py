@@ -4,7 +4,9 @@ import os
 import math
 import argparse
 import xml.etree.ElementTree as ET
-from pyproj import Transformer
+from pyproj import Transformer, CRS
+from pyproj.aoi import AreaOfInterest
+from pyproj.database import query_utm_crs_info
 from PIL import Image, ImageDraw
 
 points = [ ]
@@ -72,15 +74,17 @@ def read_dir(dir_name):
 def lonlat_to_xy(img_width, img_height, img_border):
     print("Converting coordinates...")
 
-    # Calculate average longitude
-    lon_sum = 0.0
-    for p in points:
-        lon_sum += float(p['lon'])
-    lon_avg = lon_sum / len(points)
+    utm_crs_list = query_utm_crs_info(
+        datum_name = "WGS 84",
+        area_of_interest = AreaOfInterest(
+            west_lon_degree  = min(float(p['lon']) for p in points),
+            south_lat_degree = min(float(p['lat']) for p in points),
+            east_lon_degree  = max(float(p['lon']) for p in points),
+            north_lat_degree = max(float(p['lat']) for p in points)))
 
     transformer = Transformer.from_crs(
         {"proj":'latlong', "ellps":'WGS84', "datum":'WGS84'},
-        {"proj":'utm', "ellps":'WGS84', "lon_0":lon_avg},
+        CRS.from_epsg(utm_crs_list[0].code),
         always_xy=True)
 
     for p in points:
